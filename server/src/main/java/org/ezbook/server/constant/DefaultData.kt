@@ -36,7 +36,7 @@ object DefaultData {
 
     // -------- 账单识别 --------
     val AUTO_GROUP = true                                          // 自动去重
-    val AUTO_GROUP_TIME_THRESHOLD = 180                             // 自动去重时间阈值（秒），默认180秒
+    val AUTO_GROUP_TIME_THRESHOLD = 300                             // 自动去重时间阈值（秒），默认300秒
     val AUTO_TRANSFER_RECOGNITION = false                           // 自动识别转账账单默认关闭
     val AUTO_TRANSFER_TIME_THRESHOLD = 120                          // 转账账单合并时间阈值（秒），默认120秒
     val AI_BILL_RECOGNITION: Boolean = false                        // 使用AI识别账单默认关闭
