@@ -28,25 +28,32 @@ import java.io.File
 import java.io.FileOutputStream
 
 /**
- * OCR 封装：依赖 [paddleocr4android](https://jitpack.io/#equationl/paddleocr4android)（Ncnn PP-OCRv5）。
+ * 对 [paddleocr4android](https://jitpack.io/#equationl/paddleocr4android)（Ncnn PP-OCRv5）的轻量封装。
  *
- * - 模型从 `attach` 时通过 assets 初始化；需放置官方命名的 det/rec 的 `.param` 与 `.ncnn.bin`。
- * - 传入的 [Bitmap] 由调用方负责 [Bitmap.recycle]，本类不接管所有权（与上层生命周期一致）。
+ * - 在 [attach] 中从 assets 加载模型，文件名须与上游文档一致（det/rec 的 `.param` 与 `.ncnn.bin`）。
+ * - 默认使用 GPU（[Device.GPU]）；仅当设备上 GPU 初始化失败时再考虑改用 CPU。
+ * - 传入的 [Bitmap] 由调用方负责回收，本类不调用 [Bitmap.recycle]。
  */
 open class OcrProcessor : Closeable {
 
-    /** 底层 OCR 实例，在 [attach] 成功初始化模型后才非空。 */
+    /** 模型初始化成功并在 [attach] 完成后非空。 */
     private var ocr: OCR? = null
 
-    /** 应用上下文：用于读取 assets（模型文件名须与库的 README 一致）。 */
     private lateinit var appCtx: Context
 
-    /** 是否保存带检测框的调试图到缓存目录。 */
     private var debug: Boolean = false
 
     /**
-     * 绑定上下文并初始化 Ncnn 模型（Mobile、短边缩放至 720、CPU）。
-     * 仅在首次调用且尚未初始化成功时加载模型。
+     * 可选日志出口：`(message, androidLogLevel)`。
+     * 应短小、尽量避免抛异常；通常与 OCR 调用在同一线程顺序执行。
+     */
+    private var logSink: ((message: String, androidLogLevel: Int) -> Unit)? = null
+
+    /**
+     * 绑定上下文并从 assets 加载 Mobile 端 PP-OCRv5 模型（短边缩放 [ImageSize.Size720]）。
+     * 默认 GPU 推理（[Device.GPU]）；在 [release] 之前至多成功初始化一次。
+     *
+     * @param context 任意 [Context]；内部使用 [Context.getApplicationContext]。
      */
     fun attach(context: Context) = apply {
         appCtx = context.applicationContext
@@ -63,81 +70,88 @@ open class OcrProcessor : Closeable {
             ocr = engine
         } else {
             engine.release()
-            output?.invoke(
-                "OCR 模型初始化失败（请检查 assets 中 det/rec 的 .param 与 .ncnn.bin）",
+            emit(
+                "OCR model init failed; verify det/rec .param and .ncnn.bin in assets",
                 Log.ERROR
             )
         }
     }
 
-    /** 释放 native 资源并重置实例，可再次 [attach]。 */
+    /** 释放 native OCR 资源并清空引擎引用；可重复调用，无副作用。 */
     fun release() {
         ocr?.release()
         ocr = null
     }
 
-    fun debug(boolean: Boolean) = apply {
-        this.debug = boolean
-    }
-
-    private var output: ((string: String, type: Int) -> Unit)? = null
-
-    fun log(output: (string: String, type: Int) -> Unit) = apply {
-        this.output = output
+    /**
+     * 开启或关闭调试：在 [startProcess] 中使用 [DrawModel.Box] 绘制检测框。
+     *
+     * @param enabled 为 `true` 时将带框图保存为 PNG 至应用缓存目录。
+     */
+    fun debug(enabled: Boolean) = apply {
+        this.debug = enabled
     }
 
     /**
-     * 将带框的 Bitmap 写入应用缓存目录，并限制目录内文件数量。
+     * 将内部诊断信息转发到你的日志实现；等级请使用 [android.util.Log] 常量（如 [Log.DEBUG]）。
      */
+    fun log(sink: (message: String, androidLogLevel: Int) -> Unit) = apply {
+        this.logSink = sink
+    }
+
+    /** 若已设置 [logSink] 则转发，否则忽略。 */
+    private fun emit(message: String, androidLogLevel: Int) {
+        logSink?.invoke(message, androidLogLevel)
+    }
+
+    /** 将 [bitmap] 以 PNG 写入应用缓存目录下的 `images_ocr/`，并调用 [cleanupOldImages] 清理旧文件。 */
     private fun saveDebugImage(bitmap: Bitmap) {
         val dir = File(appCtx.cacheDir, "images_ocr")
         dir.mkdirs()
-        val fileName = "ocr_${System.currentTimeMillis()}.png"
-        val file = File(dir, fileName)
+        val file = File(dir, "ocr_${System.currentTimeMillis()}.png")
         FileOutputStream(file).use { out ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         }
-        output?.invoke("Debug image saved: ${file.absolutePath}", Log.DEBUG)
+        emit("Debug image saved: ${file.absolutePath}", Log.DEBUG)
         cleanupOldImages(dir, maxCount = 100)
     }
 
+    /** 当 [dir] 内文件数超过 [maxCount] 时，按修改时间删除最旧的若干文件。 */
     private fun cleanupOldImages(dir: File, maxCount: Int) {
         val files = dir.listFiles() ?: return
         if (files.size <= maxCount) return
         files.sortBy { it.lastModified() }
-        val deleteCount = files.size - maxCount
-        files.take(deleteCount).forEach { file ->
+        files.take(files.size - maxCount).forEach { file ->
             if (file.delete()) {
-                output?.invoke("Deleted old debug image: ${file.name}", Log.DEBUG)
+                emit("Deleted old debug image: ${file.name}", Log.DEBUG)
             }
         }
     }
 
     /**
-     * 对整张 [bitmap] 做文字识别。
+     * 对整张图像执行 OCR。
      *
-     * @return 聚合后的纯文本（多行会以库侧默认方式拼接）。
+     * @return 合并后的纯文本；native 无结果时返回空字符串。
      */
     suspend fun startProcess(bitmap: Bitmap): String {
         val engine =
-            ocr ?: throw IllegalStateException("OCR engine is not initialized, call attach() first")
+            ocr ?: throw IllegalStateException("OCR not initialized; call attach() first")
 
-        output?.invoke("OCR开始, 输入尺寸: ${bitmap.width}x${bitmap.height}", Log.DEBUG)
+        emit("OCR start, input size: ${bitmap.width}x${bitmap.height}", Log.DEBUG)
 
         val drawMode = if (debug) DrawModel.Box else DrawModel.None
         return try {
             val result = engine.detectBitmap(bitmap, drawMode)
                 ?: run {
-                    output?.invoke("OCR识别返回 null", Log.ERROR)
+                    emit("OCR detectBitmap returned null", Log.ERROR)
                     return ""
                 }
 
-            output?.invoke(
-                "OCR完成: inferenceTime=${result.inferenceTime}ms, textLines=${result.textLines.size}",
+            emit(
+                "OCR done, inferenceTime=${result.inferenceTime}ms, textLines=${result.textLines.size}",
                 Log.DEBUG
             )
 
-            // 调试：库可能返回新 Bitmap，也可能在原图上绘制，仅回收库单独分配的那张。
             val overlay = result.drawBitmap
             if (debug) {
                 val toSave = overlay ?: bitmap
@@ -149,11 +163,12 @@ open class OcrProcessor : Closeable {
 
             result.text
         } catch (e: Exception) {
-            output?.invoke("OCR异常: ${e.message}", Log.ERROR)
+            emit("OCR error: ${e.message}", Log.ERROR)
             throw e
         }
     }
 
+    /** 便于 `use { }`，行为与 [release] 一致。 */
     override fun close() {
         release()
     }

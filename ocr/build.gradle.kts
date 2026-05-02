@@ -41,7 +41,6 @@ android {
 }
 
 dependencies {
-    // PP-OCRv5 Ncnn 封装：https://jitpack.io/#equationl/paddleocr4android
-    implementation("com.github.equationl.paddleocr4android:ncnnandroidppocr:v1.3.0")
+    implementation(libs.paddleocr4android)
     implementation(libs.core.ktx)
 }
