@@ -23,6 +23,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.google.android.accessibility.selecttospeak.SelectToSpeakService.Companion.instance
 import net.ankio.auto.service.AnalysisUtils
 import net.ankio.auto.service.CoreService
+import net.ankio.auto.service.ocr.OcrTools
 import net.ankio.auto.service.ocr.PageSignatureManager
 import net.ankio.auto.storage.Logger
 import net.ankio.auto.utils.PrefManager
@@ -91,7 +92,10 @@ class SelectToSpeakService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
         val pkg = event.packageName?.toString() ?: return
-        if (pkg == packageName || pkg.startsWith("com.android.") || !pkg.contains('.')) return
+        if (OcrTools.isPlausibleForegroundPackage(pkg)) {
+            Logger.d("Accessibility event: pkg=$pkg, type=${event.eventType}")
+            return
+        }
 
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {

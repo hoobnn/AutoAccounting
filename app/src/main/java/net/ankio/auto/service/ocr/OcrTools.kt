@@ -59,7 +59,7 @@ object OcrTools {
     }
 
     /** 与无障碍事件里对包名的过滤保持一致，避免把系统 UI 或本应用当作「待识别 App」。 */
-    private fun isPlausibleForegroundPackage(pkg: String): Boolean {
+    fun isPlausibleForegroundPackage(pkg: String): Boolean {
         if (pkg == BuildConfig.APPLICATION_ID) return false
         if (pkg.startsWith("com.android.")) return false
         if (!pkg.contains('.')) return false
