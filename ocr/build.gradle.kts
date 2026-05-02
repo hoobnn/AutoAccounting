@@ -41,8 +41,7 @@ android {
 }
 
 dependencies {
-    // AAR library 不能直接 implementation 本地 .aar，使用 compileOnly
-    // 运行时依赖由 app 模块提供
-    compileOnly(files("libs/OcrLibrary-1.3.0-release.aar"))
+    // PP-OCRv5 Ncnn 封装：https://jitpack.io/#equationl/paddleocr4android
+    implementation("com.github.equationl.paddleocr4android:ncnnandroidppocr:v1.3.0")
     implementation(libs.core.ktx)
 }
