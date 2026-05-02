@@ -134,18 +134,18 @@ class Shell(packageName: String) : Closeable {
         } else if (shizukuPermission()) {
             return shizukuExecCommand(command)
         }
-        error("no permission")
+        error("no any shell permission")
     }
 
 
     suspend fun runAsRoot(command: String): String {
         if (rootPermission()) return rootExecCommand(command)
-        error("no permission")
+        error("no root permission")
     }
 
     suspend fun runAsShizuku(command: String): String {
         if (shizukuPermission()) return shizukuExecCommand(command)
-        error("no permission")
+        error("no shizuku permission")
     }
 
 }
