@@ -81,11 +81,11 @@ class SelectToSpeakService : AccessibilityService() {
                 info.flags or AccessibilityServiceInfo.FLAG_REQUEST_ENHANCED_WEB_ACCESSIBILITY
             serviceInfo = info
         }
-        // 授权后自动返回应用主界面
-        packageManager.getLaunchIntentForPackage(packageName)?.let { intent ->
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
-        }
+        // 不在此处 startActivity 拉起本应用主界面：
+        // Xposed/OCR 混合场景下无障碍会随 OCR 结束反复 disable/enable，
+        // 每次 onServiceConnected 都启动主 Activity 会把用户从待识别 App（银行/微信等）强行拉回自动记账，
+        // 且此时 topPackage 尚未更新，易触发「无法正确识别前台应用」。
+        // 从系统设置开启无障碍后，用户按返回键即可回到原应用。
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
