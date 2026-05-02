@@ -31,8 +31,40 @@ object OcrTools {
 
     // ======================== 核心功能 ========================
 
-    /** 获取当前前台包名 */
-    fun getTopApp(): String? = SelectToSpeakService.topPackage
+    /**
+     * 获取当前前台包名（用于 OCR 传给规则引擎的 app 参数）。
+     *
+     * 优先使用 [AccessibilityService.rootInActiveWindow]：在触发 OCR 的瞬间反映真实焦点窗口，
+     * 避免仅依赖 [SelectToSpeakService.topPackage]（仅靠 WINDOW_STATE_CHANGED 更新，连接初期或
+     * 快速切换时可能为空或滞后）。
+     *
+     * 过滤规则与 [SelectToSpeakService.onAccessibilityEvent] 一致：排除本包、系统框架、无点号包名。
+     */
+    fun getTopApp(): String? {
+        val fromWindow = readForegroundPackageFromActiveWindow()
+        if (fromWindow != null) return fromWindow
+        val cached = SelectToSpeakService.topPackage
+        return cached?.takeIf { isPlausibleForegroundPackage(it) }
+    }
+
+    /** 从当前活动窗口根节点读取包名；无效或需排除时返回 null。 */
+    private fun readForegroundPackageFromActiveWindow(): String? {
+        val root = SelectToSpeakService.instance?.rootInActiveWindow ?: return null
+        return try {
+            val pkg = root.packageName?.toString()
+            if (pkg.isNullOrBlank() || !isPlausibleForegroundPackage(pkg)) null else pkg
+        } finally {
+            root.recycle()
+        }
+    }
+
+    /** 与无障碍事件里对包名的过滤保持一致，避免把系统 UI 或本应用当作「待识别 App」。 */
+    private fun isPlausibleForegroundPackage(pkg: String): Boolean {
+        if (pkg == BuildConfig.APPLICATION_ID) return false
+        if (pkg.startsWith("com.android.")) return false
+        if (!pkg.contains('.')) return false
+        return true
+    }
 
     /** 截取当前屏幕 */
     suspend fun takeScreenshot(outFile: File): Boolean = withContext(Dispatchers.IO) {
