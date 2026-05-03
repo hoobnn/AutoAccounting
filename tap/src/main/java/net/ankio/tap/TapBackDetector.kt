@@ -1,3 +1,8 @@
+/*
+ * Copyright (C) 2026 ankio(ankio@ankio.net)
+ * Licensed under the Apache License, Version 3.0 (the "License");
+ */
+
 package net.ankio.tap
 
 import android.content.Context
@@ -8,22 +13,23 @@ import android.hardware.SensorManager
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import net.ankio.tap.columbus.BaseTapRT
 import net.ankio.tap.columbus.sensors.TapRT
+import net.ankio.tap.samsung.SamsungBackTapDetectionService
 
 /**
- * 双击设备背部检测（Columbus ML + TapTap 「混合模式」参数）。
+ * 双击设备背部检测：自动按机型选择 TapTap 同款 Columbus 或三星 RegiStar 模型与运行时。
  *
  * 典型用法：`start()` 后开始监听，`stop()` 卸载传感器并可再次 `start()`（每次会话重建 TFLite 解释器）。
  *
- * @param sensitivity 峰值噪声底，与 TapTap 默认 Columbus `0.05f` 同量级；更小更灵敏。
+ * @param forcedBuiltinModel 若为 null，则 [TapDeviceModelResolver] 根据厂商 / codename / 屏高自动选模
+ * @param sensitivity Columbus 噪声底（与 TapTap 默认 `0.05f` 同量级）；三星路径会映射为 RegiStar 峰值乘子
  */
 class TapBackDetector(
     context: Context,
-    private val modelAssetPath: String = DEFAULT_MODEL_ASSET,
+    private val forcedBuiltinModel: TapBuiltinModel? = null,
     private val sensitivity: Float = 0.05f,
-    /** 若为 null，则内部创建专用 [HandlerThread] 投递传感器事件。 */
     private val sensorLooper: Looper? = null,
-    /** 双击确认后的用户回调所在的 Looper（通常主线程）。 */
     private val callbackLooper: Looper = Looper.getMainLooper(),
     private val onDoubleBackTap: () -> Unit,
 ) {
@@ -37,16 +43,10 @@ class TapBackDetector(
     private var sensorHandler: Handler? = null
     private val callbackHandler = Handler(callbackLooper)
 
-    /** 每次 [start] 创建，便于 [stop] 后安全关闭 native 解释器并重入。 */
     private var classifier: TapTfClassifier? = null
+    private var tapRuntime: BaseTapRT? = null
 
-    /** 与 [listener] 绑定的单次会话运行时。 */
-    private var tapRuntime: TapRT? = null
-
-    /** 传感器回调次数，用于节流诊断日志。 */
     private var sensorEventCount = 0L
-
-    /** 首包事件各打一条，确认两路传感器都在进回调。 */
     private var loggedFirstAccel = false
     private var loggedFirstGyro = false
 
@@ -77,7 +77,7 @@ class TapBackDetector(
             )
             sensorEventCount++
             if (sensorEventCount % SENSOR_DIAG_EVERY == 0L) {
-                TapLogger.d(SUB, "sensor throttle #${sensorEventCount} ${tap.debugPipelineSummary()}")
+                TapLogger.d(SUB, "sensor throttle #${sensorEventCount} ${tap.debugSummary()}")
             }
             val timing = tap.checkDoubleTapTiming(event.timestamp)
             if (timing == 2) {
@@ -93,7 +93,6 @@ class TapBackDetector(
 
     fun isStarted(): Boolean = started
 
-    /** 混合模式：[applyHybridColumbusInit] + `isHeuristic=false` + SENSOR_DELAY_FASTEST。 */
     fun start() {
         if (started) return
         if (accelerometer == null || gyroscope == null) {
@@ -110,9 +109,19 @@ class TapBackDetector(
         }.looper
         sensorHandler = Handler(looper)
 
-        classifier = TapTfClassifier(appContext.assets, modelAssetPath)
-        tapRuntime = ProjectTapRt(SIZE_WINDOW_NS, classifier!!, sensitivity).also { rt ->
-            applyHybridColumbusInit(rt)
+        val model = forcedBuiltinModel ?: TapDeviceModelResolver.resolve(appContext)
+        classifier = TapTfClassifier(appContext.assets, model)
+        tapRuntime = if (model.isSamsungRegi()) {
+            val samsungSens = mapColumbusNoiseToSamsungMultiplier(sensitivity)
+            SamsungBackTapDetectionService(
+                tripleTapEnabled = false,
+                sensitivity = samsungSens,
+                classifier = classifier!!,
+            ).also { it.reset(false) }
+        } else {
+            ProjectTapRt(SIZE_WINDOW_NS, classifier!!, sensitivity).also { rt ->
+                applyHybridColumbusInit(rt)
+            }
         }
 
         runCatching {
@@ -142,8 +151,8 @@ class TapBackDetector(
         started = true
         TapLogger.i(
             SUB,
-            "started model=$modelAssetPath sensitivity=$sensitivity sensorThread=${looper.thread?.name} " +
-                "callback=${callbackLooper.thread?.name}",
+            "started builtin=${model.id} path=${model.assetPath} samsung=${model.isSamsungRegi()} " +
+                    "sensitivity=$sensitivity sensorThread=${looper.thread?.name} callback=${callbackLooper.thread?.name}",
         )
     }
 
@@ -161,8 +170,8 @@ class TapBackDetector(
     }
 
     /**
-     * 与 TapTap `GestureSensorImpl.startListening(heuristicMode = true)` 分支一致，
-     * 再配合 [tap.updateData] 的 ML 分支（文档所谓混合模式）。
+     * 与 TapTap `GestureSensorImpl.startListening(heuristicMode = true)` 滤波/峰值参数一致，
+     * 再配合 [TapRT.updateData] 的 ML 分支（混合模式）。
      */
     private fun applyHybridColumbusInit(rt: ProjectTapRt) {
         rt.getLowpassKey().setPara(0.2f)
@@ -172,15 +181,25 @@ class TapBackDetector(
         rt.reset(false)
     }
 
+    private fun BaseTapRT.debugSummary(): String = when (this) {
+        is TapRT -> debugPipelineSummary()
+        is SamsungBackTapDetectionService -> debugPipelineSummary()
+        else -> "runtime=${this::class.java.simpleName}"
+    }
+
+    /**
+     * 将 Columbus 噪声参数映射到三星峰值乘子区间（对齐 TapTap `SAMSUNG_SENSITIVITY_VALUES` 量级）。
+     * Columbus 越小越灵敏 → 三星乘子略抬高。
+     */
+    private fun mapColumbusNoiseToSamsungMultiplier(columbusNoise: Float): Float {
+        val ratio = (columbusNoise / 0.05f).coerceIn(0.25f, 4f)
+        return (1f / ratio).coerceIn(0.25f, 1.5f)
+    }
+
     private companion object {
         private const val SUB = "TapBack"
-
-        /** Pixel 4 XL 标定；包内 assets 已含 `columbus/12` 下多机型备选。 */
-        const val DEFAULT_MODEL_ASSET = "columbus/12/tap7cls_coral.tflite"
         private const val SIZE_WINDOW_NS = 160_000_000L
         private const val SAMPLING_INTERVAL_NS = 2_500_000L
-
-        /** 每 N 次传感器回调打一条流水线摘要，平衡信息量与 log 体积。 */
         private const val SENSOR_DIAG_EVERY = 8_000L
     }
 }
