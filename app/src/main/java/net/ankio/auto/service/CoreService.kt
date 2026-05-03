@@ -71,21 +71,23 @@ class CoreService : LifecycleService() {
     }
 
     /**
-     * 根据工作模式初始化服务列表
-     * Xposed模式下只启用悬浮窗服务
-     * 其他模式下启用所有服务：服务器服务、OCR服务和悬浮窗服务
+     * 根据工作模式初始化服务列表。
+     * Xposed 模式：OCR、双击背部触发、悬浮窗（无后台 HTTP）。
+     * 其他模式：后台 HTTP、OCR、双击背部触发、悬浮窗。
      */
     private fun initializeServices() {
         services = if (WorkMode.isXposed()) {
             listOf(
                 OcrService(),
-                OverlayService()
+                BackTapOcrTriggerService(),
+                OverlayService(),
             )
         } else {
             listOf(
-                BackgroundHttpService(),  // 自动记账的服务模块
-                OcrService(),     // OCR服务
-                OverlayService() // 悬浮窗服务
+                BackgroundHttpService(),
+                OcrService(),
+                BackTapOcrTriggerService(),
+                OverlayService(),
             )
         }
     }

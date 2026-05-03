@@ -29,8 +29,6 @@ import net.ankio.auto.ui.dialog.RememberPageDialog
 import net.ankio.auto.ui.utils.DisplayUtils
 import net.ankio.auto.utils.PrefManager
 import net.ankio.ocr.OcrProcessor
-import net.ankio.tap.TapBackDetector
-import net.ankio.tap.TapLogger
 import org.ezbook.server.constant.DataType
 import org.ezbook.server.constant.LogLevel
 import org.ezbook.server.intent.IntentType
@@ -42,18 +40,13 @@ import java.io.File
 /**
  * OCR 服务：截取屏幕并完成 OCR / AI 分析。
  *
- * **传感器触发**：在 OCR 模式下可启用双击机身背部（Columbus Tap）；需要加速度计与陀螺仪。
+ * **双击背部触发**由独立子服务 [BackTapOcrTriggerService] 负责，通过 OCR Intent 与本服务协作。
  */
 class OcrService : ICoreService() {
 
     // OCR处理器
     private lateinit var ocrProcessor: OcrProcessor
     private var saveProgressView: SaveProgressView? = null
-
-    /** 双击背部检测（TapTap Columbus 管线）；与服务同生命周期创建/销毁。 */
-    private var backTapDetector: TapBackDetector? = null
-
-
 
     private val ocrView = OcrViews()
 
@@ -66,27 +59,6 @@ class OcrService : ICoreService() {
 
         ocrProcessor = OcrProcessor().debug(PrefManager.debugMode).attach(coreService)
             .log { string, type -> Logger.log(LogLevel.fromAndroidLevel(type), string) }
-
-        // 非 Xposed 的 OCR 模式：可选双击背部触发（替代原翻转手机触发）
-        if (PrefManager.ocrBackTapTrigger) {
-
-            if (TapLogger.hook == null) {
-                TapLogger.hook =
-                    { level, msg, tr -> Logger.log(LogLevel.fromAndroidLevel(level), msg, tr) }
-            }
-
-            backTapDetector = TapBackDetector(coreService) {
-                Logger.d("[TapBack→OCR] double tap callback received, launching OCR")
-                coreService.lifecycleScope.launch { triggerOcr(true) }
-            }.also {
-                it.start()
-                if (it.isStarted()) {
-                    Logger.d("Tap back listening")
-                } else {
-                    Logger.e("Tap back OCR trigger unavailable (accelerometer or gyroscope missing)")
-                }
-            }
-        }
 
         serverStarted = true
         Logger.i("OCR service initialized")
@@ -114,9 +86,6 @@ class OcrService : ICoreService() {
      * 服务销毁时的清理工作
      */
     override fun onDestroy() {
-
-        backTapDetector?.stop()
-        backTapDetector = null
         // 释放 OCR 引擎资源，确保跟随服务生命周期关闭。
         ocrProcessor.close()
         // 确保状态横幅被清理

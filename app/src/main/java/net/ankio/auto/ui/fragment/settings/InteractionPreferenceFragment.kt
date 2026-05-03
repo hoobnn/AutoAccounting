@@ -20,7 +20,6 @@ import androidx.navigation.fragment.findNavController
 import androidx.preference.Preference
 import androidx.preference.PreferenceDataStore
 import net.ankio.auto.R
-import net.ankio.auto.constant.WorkMode
 import net.ankio.auto.service.CoreService
 import net.ankio.auto.service.ocr.OcrTools
 import net.ankio.auto.ui.api.BasePreferenceFragment
@@ -74,13 +73,12 @@ class InteractionPreferenceFragment : BasePreferenceFragment() {
             }
         }
 
-        // OCR 双击背部触发开关变化时重启服务，使配置即时生效
+        // 双击背部触发 OCR：由 [BackTapOcrTriggerService] 承载；CoreService 已运行时重启以即时生效（含 Xposed / LSPatch）
         findPreference<MaterialSwitchPreference>("ocrBackTapTrigger")?.apply {
             setOnPreferenceChangeListener { _, newValue ->
                 val enabled = (newValue as? Boolean) ?: return@setOnPreferenceChangeListener true
-                // 先写入以避免重启与持久化的竞态
                 PrefManager.ocrBackTapTrigger = enabled
-                if (WorkMode.isOcr()) {
+                if (CoreService.isRunning(requireContext())) {
                     CoreService.restart(requireActivity())
                 }
                 true
@@ -105,9 +103,8 @@ class InteractionPreferenceFragment : BasePreferenceFragment() {
             updateToastPositionSummary(it)
         }
 
-        if (!WorkMode.isOcr()) {
-            findPreference<MaterialSwitchPreference>("ocrBackTapTrigger")?.isEnabled = false
-        }
+        // OCR / LSPatch / Xposed 均可使用（取决于是否运行 CoreService）
+        findPreference<MaterialSwitchPreference>("ocrBackTapTrigger")?.isEnabled = true
     }
 
     /**
