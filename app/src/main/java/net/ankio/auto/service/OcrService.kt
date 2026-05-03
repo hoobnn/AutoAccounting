@@ -12,17 +12,14 @@ import android.util.Base64
 import androidx.lifecycle.lifecycleScope
 import com.google.android.accessibility.selecttospeak.SelectToSpeakService
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import net.ankio.auto.BuildConfig
 import net.ankio.auto.R
 import net.ankio.auto.constant.WorkMode
 import net.ankio.auto.http.api.JsAPI
 import net.ankio.auto.service.OcrService.Companion.OCR_MAX_SHORT_EDGE
 import net.ankio.auto.service.api.ICoreService
 import net.ankio.auto.service.api.IService
-import net.ankio.tap.TapBackDetector
 import net.ankio.auto.service.ocr.OcrTools
 import net.ankio.auto.service.ocr.OcrViews
 import net.ankio.auto.service.ocr.PageSignatureManager
@@ -32,7 +29,7 @@ import net.ankio.auto.ui.dialog.RememberPageDialog
 import net.ankio.auto.ui.utils.DisplayUtils
 import net.ankio.auto.utils.PrefManager
 import net.ankio.ocr.OcrProcessor
-import net.ankio.shell.Shell
+import net.ankio.tap.TapBackDetector
 import net.ankio.tap.TapLogger
 import org.ezbook.server.constant.DataType
 import org.ezbook.server.constant.LogLevel
@@ -79,9 +76,8 @@ class OcrService : ICoreService() {
             }
 
             backTapDetector = TapBackDetector(coreService) {
-                TapLogger.i("TapBack", "onDoubleBackTap -> launch triggerOcr(manual=false)")
                 Logger.d("[TapBack→OCR] double tap callback received, launching OCR")
-                coreService.lifecycleScope.launch { triggerOcr(false) }
+                coreService.lifecycleScope.launch { triggerOcr(true) }
             }.also {
                 it.start()
                 if (it.isStarted()) {
