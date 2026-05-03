@@ -32,38 +32,51 @@ object OcrTools {
     // ======================== 核心功能 ========================
 
     /**
-     * 获取当前前台包名（用于 OCR 传给规则引擎的 app 参数）。
+     * 当前前台应用包名（供 OCR 规则引擎 app 参数）。
      *
-     * 优先使用 [AccessibilityService.rootInActiveWindow]：在触发 OCR 的瞬间反映真实焦点窗口，
-     * 避免仅依赖 [SelectToSpeakService.topPackage]（仅靠 WINDOW_STATE_CHANGED 更新，连接初期或
-     * 快速切换时可能为空或滞后）。
+     * 优先 [AccessibilityService.rootInActiveWindow]（触发瞬间的真实焦点窗口），
+     * 否则回退 [SelectToSpeakService.topPackage]（由 WINDOW_STATE_CHANGED 维护，连接初期可能仍为空）。
      *
-     * 过滤规则与 [SelectToSpeakService.onAccessibilityEvent] 一致：排除本包、系统框架、无点号包名。
+     * 诊断日志前缀：`[OcrTopApp]`，logcat 可 `adb logcat | grep OcrTopApp`。
      */
     fun getTopApp(): String? {
+        if (SelectToSpeakService.instance == null) {
+            Logger.w("[OcrTopApp] SelectToSpeakService.instance is null (accessibility not connected)")
+        }
         val fromWindow = readForegroundPackageFromActiveWindow()
-        if (fromWindow != null) return fromWindow
+        if (fromWindow != null) {
+            Logger.i("[OcrTopApp] resolved from rootInActiveWindow: $fromWindow")
+            return fromWindow
+        }
         val cached = SelectToSpeakService.topPackage
-        return cached?.takeIf { isPlausibleForegroundPackage(it) }
+        if (cached.isNullOrBlank()) {
+            Logger.w("[OcrTopApp] no package from active window; topPackage cache is empty (no WINDOW_STATE_CHANGED yet?)")
+            return null
+        }
+        Logger.i("[OcrTopApp] resolved from topPackage cache: $cached")
+        return cached
     }
 
-    /** 从当前活动窗口根节点读取包名；无效或需排除时返回 null。 */
+    /** 从当前活动窗口根节点读取包名；包名为空则返回 null。 */
     private fun readForegroundPackageFromActiveWindow(): String? {
-        val root = SelectToSpeakService.instance?.rootInActiveWindow ?: return null
+        if (SelectToSpeakService.instance == null) {
+            return null
+        }
+        val root = SelectToSpeakService.instance?.rootInActiveWindow ?: run {
+            Logger.w("[OcrTopApp] rootInActiveWindow is null")
+            return null
+        }
         return try {
             val pkg = root.packageName?.toString()
-            if (pkg.isNullOrBlank() || !isPlausibleForegroundPackage(pkg)) null else pkg
+            if (pkg.isNullOrBlank()) {
+                Logger.w("[OcrTopApp] active window packageName is blank")
+                null
+            } else {
+                pkg
+            }
         } finally {
             root.recycle()
         }
-    }
-
-    /** 与无障碍事件里对包名的过滤保持一致，避免把系统 UI 或本应用当作「待识别 App」。 */
-    fun isPlausibleForegroundPackage(pkg: String): Boolean {
-        if (pkg == BuildConfig.APPLICATION_ID) return false
-        if (pkg.startsWith("com.android.")) return false
-        if (!pkg.contains('.')) return false
-        return true
     }
 
     /** 截取当前屏幕 */
