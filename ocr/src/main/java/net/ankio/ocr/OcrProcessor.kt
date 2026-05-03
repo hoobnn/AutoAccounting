@@ -64,7 +64,7 @@ open class OcrProcessor : Closeable {
             appCtx.assets,
             ModelType.Mobile,
             ImageSize.Size720,
-            Device.GPU
+            Device.CPU
         )
         if (ok) {
             ocr = engine
