@@ -34,7 +34,6 @@ class BackTapOcrTriggerService : ICoreService() {
         }
         ensureTapLoggerHook()
         detector = TapBackDetector(coreService) {
-            TapLogger.i("TapBack", "onDoubleBackTap -> dispatch OCR intent (manual=true)")
             Logger.d("[TapBack→OCR] double tap, dispatching CoreService OCR intent")
             val intent = Intent(coreService, CoreService::class.java).apply {
                 putExtra("intentType", IntentType.OCR.name)
