@@ -382,8 +382,10 @@ object PrefManager {
         get() = "accessibility"
         set(_) { /* 不再支持切换 */ }
 
-    /** 是否启用翻转手机触发当前页面识别（非Xposed模式） */
-    /** 双击背部传感器触发 OCR；存储键仍为 [Setting.OCR_BACK_TAP_TRIGGER]（原翻转开关） */
+    /**
+     * 双击背部传感器触发当前页 OCR（[BackTapOcrTriggerService]）；与纯 OCR / LSPatch / Xposed 工作模式无关，
+     * 仅依赖 [CoreService] 是否在运行。存储键仍为 [Setting.OCR_BACK_TAP_TRIGGER]（原「翻转触发」开关位）。
+     */
     var ocrBackTapTrigger: Boolean
         get() = getBoolean(Setting.OCR_BACK_TAP_TRIGGER, DefaultData.OCR_BACK_TAP_TRIGGER)
         set(value) = putBoolean(Setting.OCR_BACK_TAP_TRIGGER, value)
