@@ -39,7 +39,7 @@ object OcrTools {
             Logger.w("[OcrTopApp] SelectToSpeakService.instance is null (accessibility not connected)")
         }
 
-        return SelectToSpeakService.instance?.getTopPackage()
+        return SelectToSpeakService.instance?.getNowTopPackage()
     }
 
     /** 截取当前屏幕 */

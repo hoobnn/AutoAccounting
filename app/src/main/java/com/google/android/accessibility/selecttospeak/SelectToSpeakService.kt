@@ -93,15 +93,53 @@ class SelectToSpeakService : AccessibilityService() {
         }
 
         // 3. 过滤桌面 (Launcher)
-        // 大多数桌面包名包含 "launcher"、"trebuchet" 或 "home"
-        if (p.endsWith(".launcher")) {
-            Logger.d("Filter out launcher package: $pkg")
+
+        val androidLauncherList = listOf<String>(
+            "com.google.android.apps.nexuslauncher",   // Google Pixel (Pixel Launcher)
+            "com.sec.android.app.launcher",             // 三星 (One UI Home)
+            "com.miui.home",                            // 小米/红米 (MIUI/HyperOS)
+            "com.huawei.android.launcher",              // 华为 (HarmonyOS/EMUI)
+            "com.hihonor.android.launcher",             // 荣耀 (MagicOS)
+            "com.oppo.launcher",                        // OPPO (ColorOS)
+            "com.bbk.launcher2",                        // vivo/iQOO (OriginOS - 早期及核心)
+            "com.vivo.launcher",                        // vivo (部分海外版或新机型)
+            "net.oneplus.launcher",                     // 一加 (氢OS/早期氧OS)
+            "com.meizu.flyme.launcher",                 // 魅族 (Flyme)
+            "com.motorola.launcher3",                   // 摩托罗拉
+            "com.sonyericsson.home",                    // 索尼 (Xperia Home)
+            "com.android.launcher3",                    // AOSP/原生安卓/类原生
+            "com.android.launcher2",                    // 极老旧安卓原生版本
+            "com.htc.launcher",                         // HTC (Sense)
+            "com.lge.launcher",                         // LG
+            "com.transsion.hilauncher",                 // 传音 (Tecno/Infinix)
+            "com.nothing.launcher"                      // Nothing Phone
+        )
+
+        androidLauncherList.any { p.contains(it) }.let {
+            Logger.d("Filter out known launcher package: $pkg")
             return false
         }
 
         return true
     }
 
+    suspend fun getNowTopPackage(): String? = withTimeout(10_000L) {
+        while (instance == null || instance?.rootInActiveWindow == null) {
+            Logger.d("Waiting for accessibility service to be ready...")
+            delay(500)
+        }
+        val rootNode = rootInActiveWindow
+        if (rootNode != null) {
+            val packageName = rootNode.packageName?.toString()
+            if (filterPkg(packageName)) {
+                Logger.i("Top package from active window: $packageName")
+                topPackage = packageName
+                return@withTimeout packageName
+            }
+            rootNode.recycle()
+        }
+        return@withTimeout null
+    }
     suspend fun getTopPackage(): String? = withTimeout(10_000L) {
         if (topPackage.isNullOrEmpty()) {
             Logger.d("Top package is null or empty")
