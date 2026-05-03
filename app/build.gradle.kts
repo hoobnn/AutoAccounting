@@ -202,6 +202,7 @@ dependencies {
     implementation(project(":server"))
     implementation(project(":shell"))
     implementation(project(":ocr"))
+    implementation(project(":tap"))
 
     // debug依赖
     debugImplementation(libs.leakcanary.android)

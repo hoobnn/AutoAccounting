@@ -84,7 +84,9 @@ object Setting {
     // -------- OCR识别 --------
     const val OCR_AUTH_MODE: String =
         "ocr_auth_mode"              // OCR授权方式（root/shizuku/accessibility）
-    const val OCR_FLIP_TRIGGER: String = "ocr_flip_trigger"        // 翻转手机触发当前页面识别（非Xposed模式）
+
+    /** prefs 键名仍为 `ocr_flip_trigger`，避免升级丢配置；语义为双击背部触发 OCR */
+    const val OCR_BACK_TAP_TRIGGER: String = "ocr_flip_trigger"
     const val OCR_ACCESSIBILITY_AUTO_TRIGGER: String =
         "ocr_accessibility_auto_trigger"  // 无障碍模式下页面切换自动触发
     const val OCR_SHOW_ANIMATION: String = "ocr_show_animation"    // OCR识别时显示动画

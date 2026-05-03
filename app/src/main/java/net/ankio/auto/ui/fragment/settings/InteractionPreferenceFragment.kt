@@ -74,12 +74,12 @@ class InteractionPreferenceFragment : BasePreferenceFragment() {
             }
         }
 
-        // OCR 翻转触发开关变化时重启服务，使配置即时生效
-        findPreference<MaterialSwitchPreference>("ocrFlipTrigger")?.apply {
+        // OCR 双击背部触发开关变化时重启服务，使配置即时生效
+        findPreference<MaterialSwitchPreference>("ocrBackTapTrigger")?.apply {
             setOnPreferenceChangeListener { _, newValue ->
                 val enabled = (newValue as? Boolean) ?: return@setOnPreferenceChangeListener true
                 // 先写入以避免重启与持久化的竞态
-                PrefManager.ocrFlipTrigger = enabled
+                PrefManager.ocrBackTapTrigger = enabled
                 if (WorkMode.isOcr()) {
                     CoreService.restart(requireActivity())
                 }
@@ -106,7 +106,7 @@ class InteractionPreferenceFragment : BasePreferenceFragment() {
         }
 
         if (!WorkMode.isOcr()) {
-            findPreference<MaterialSwitchPreference>("ocrFlipTrigger")?.isEnabled = false
+            findPreference<MaterialSwitchPreference>("ocrBackTapTrigger")?.isEnabled = false
         }
     }
 
@@ -188,7 +188,7 @@ class InteractionPreferenceFragment : BasePreferenceFragment() {
                 "loadSuccess" -> PrefManager.loadSuccess
                 "showDuplicatedPopup" -> PrefManager.showDuplicatedPopup
                 // OCR识别
-                "ocrFlipTrigger" -> PrefManager.ocrFlipTrigger
+                "ocrBackTapTrigger" -> PrefManager.ocrBackTapTrigger
                 "ocrAccessibilityAutoTrigger" -> PrefManager.ocrAccessibilityAutoTrigger
                 "ocrShowAnimation" -> PrefManager.ocrShowAnimation
                 "ocrAccessibilityKeepAlive" -> PrefManager.ocrAccessibilityKeepAlive
@@ -211,7 +211,7 @@ class InteractionPreferenceFragment : BasePreferenceFragment() {
                 "loadSuccess" -> PrefManager.loadSuccess = value
                 "showDuplicatedPopup" -> PrefManager.showDuplicatedPopup = value
                 // OCR识别
-                "ocrFlipTrigger" -> PrefManager.ocrFlipTrigger = value
+                "ocrBackTapTrigger" -> PrefManager.ocrBackTapTrigger = value
                 "ocrAccessibilityAutoTrigger" -> PrefManager.ocrAccessibilityAutoTrigger = value
                 "ocrShowAnimation" -> PrefManager.ocrShowAnimation = value
                 "ocrAccessibilityKeepAlive" -> PrefManager.ocrAccessibilityKeepAlive = value

@@ -383,9 +383,10 @@ object PrefManager {
         set(_) { /* 不再支持切换 */ }
 
     /** 是否启用翻转手机触发当前页面识别（非Xposed模式） */
-    var ocrFlipTrigger: Boolean
-        get() = getBoolean(Setting.OCR_FLIP_TRIGGER, DefaultData.OCR_FLIP_TRIGGER)
-        set(value) = putBoolean(Setting.OCR_FLIP_TRIGGER, value)
+    /** 双击背部传感器触发 OCR；存储键仍为 [Setting.OCR_BACK_TAP_TRIGGER]（原翻转开关） */
+    var ocrBackTapTrigger: Boolean
+        get() = getBoolean(Setting.OCR_BACK_TAP_TRIGGER, DefaultData.OCR_BACK_TAP_TRIGGER)
+        set(value) = putBoolean(Setting.OCR_BACK_TAP_TRIGGER, value)
 
     /** 无障碍模式下页面切换时是否自动触发OCR（需 ocrAuthMode=accessibility） */
     var ocrAccessibilityAutoTrigger: Boolean

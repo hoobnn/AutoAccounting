@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.hardware.SensorManager
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -13,6 +12,7 @@ import android.util.Base64
 import androidx.lifecycle.lifecycleScope
 import com.google.android.accessibility.selecttospeak.SelectToSpeakService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.ankio.auto.BuildConfig
@@ -22,7 +22,7 @@ import net.ankio.auto.http.api.JsAPI
 import net.ankio.auto.service.OcrService.Companion.OCR_MAX_SHORT_EDGE
 import net.ankio.auto.service.api.ICoreService
 import net.ankio.auto.service.api.IService
-import net.ankio.auto.service.ocr.FlipDetector
+import net.ankio.tap.TapBackDetector
 import net.ankio.auto.service.ocr.OcrTools
 import net.ankio.auto.service.ocr.OcrViews
 import net.ankio.auto.service.ocr.PageSignatureManager
@@ -33,6 +33,7 @@ import net.ankio.auto.ui.utils.DisplayUtils
 import net.ankio.auto.utils.PrefManager
 import net.ankio.ocr.OcrProcessor
 import net.ankio.shell.Shell
+import net.ankio.tap.TapLogger
 import org.ezbook.server.constant.DataType
 import org.ezbook.server.constant.LogLevel
 import org.ezbook.server.intent.IntentType
@@ -42,12 +43,9 @@ import org.ezbook.server.tools.runCatchingExceptCancel
 import java.io.File
 
 /**
- * OCR服务类，用于实现屏幕文字识别功能
- * 主要功能：
- * 1. 监听设备翻转事件（从朝下翻转到朝上）
- * 2. 截取屏幕内容
- * 3. 进行OCR文字识别
- * 4. 顶部横幅提示处理进度
+ * OCR 服务：截取屏幕并完成 OCR / AI 分析。
+ *
+ * **传感器触发**：在 OCR 模式下可启用双击机身背部（Columbus Tap）；需要加速度计与陀螺仪。
  */
 class OcrService : ICoreService() {
 
@@ -55,15 +53,8 @@ class OcrService : ICoreService() {
     private lateinit var ocrProcessor: OcrProcessor
     private var saveProgressView: SaveProgressView? = null
 
-    // 翻转检测器，当设备从朝下翻转到朝上时触发OCR
-    private val detector by lazy {
-        FlipDetector(coreService.getSystemService(Context.SENSOR_SERVICE) as SensorManager) {
-            coreService.lifecycleScope.launch {
-                // 传感器触发：非手动
-                triggerOcr(false)
-            }
-        }
-    }
+    /** 双击背部检测（TapTap Columbus 管线）；与服务同生命周期创建/销毁。 */
+    private var backTapDetector: TapBackDetector? = null
 
 
 
@@ -79,13 +70,25 @@ class OcrService : ICoreService() {
         ocrProcessor = OcrProcessor().debug(PrefManager.debugMode).attach(coreService)
             .log { string, type -> Logger.log(LogLevel.fromAndroidLevel(type), string) }
 
-        // 只在非Xposed模式下启用翻转检测，且需要配置项开启
-        if (WorkMode.isOcr() && PrefManager.ocrFlipTrigger) {
-            // 启动翻转检测
-            if (!detector.start()) {
-                Logger.e("Gravity/accelerometer sensor not available")
-            } else {
-                Logger.d("Flip detector started")
+        // 非 Xposed 的 OCR 模式：可选双击背部触发（替代原翻转手机触发）
+        if (PrefManager.ocrBackTapTrigger) {
+
+            if (TapLogger.hook == null) {
+                TapLogger.hook =
+                    { level, msg, tr -> Logger.log(LogLevel.fromAndroidLevel(level), msg, tr) }
+            }
+
+            backTapDetector = TapBackDetector(coreService) {
+                TapLogger.i("TapBack", "onDoubleBackTap -> launch triggerOcr(manual=false)")
+                Logger.d("[TapBack→OCR] double tap callback received, launching OCR")
+                coreService.lifecycleScope.launch { triggerOcr(false) }
+            }.also {
+                it.start()
+                if (it.isStarted()) {
+                    Logger.d("Tap back listening")
+                } else {
+                    Logger.e("Tap back OCR trigger unavailable (accelerometer or gyroscope missing)")
+                }
             }
         }
 
@@ -116,7 +119,8 @@ class OcrService : ICoreService() {
      */
     override fun onDestroy() {
 
-        detector.stop()
+        backTapDetector?.stop()
+        backTapDetector = null
         // 释放 OCR 引擎资源，确保跟随服务生命周期关闭。
         ocrProcessor.close()
         // 确保状态横幅被清理
@@ -162,28 +166,29 @@ class OcrService : ICoreService() {
 
     /**
      * 触发OCR识别
-     * 支持多种触发方式：设备翻转、Intent、磁贴等
+     * 支持多种触发方式：双击背部、Intent、磁贴等
      * 所有异常和状态通过顶部横幅展示。
      */
     private suspend fun triggerOcr(manual: Boolean) {
         if (ocrDoing) {
-            Logger.d("OCR busy, skipped")
+            Logger.d("[TapBack→OCR] skip: pipeline busy (ocrDoing=true) manual=$manual")
             return
         }
 
         val keyguardManager =
             coreService.getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
         if (keyguardManager.isKeyguardLocked) {
-            Logger.d("Screen locked, skipped")
+            Logger.d("[TapBack→OCR] skip: keyguard locked manual=$manual")
             return
         }
 
         if (PrefManager.landscapeDnd && DisplayUtils.isWindowLandscape(coreService)) {
-            Logger.d("Landscape mode, skipped")
+            Logger.d("[TapBack→OCR] skip: landscape DND enabled manual=$manual")
             return
         }
 
         if (!OcrTools.requestPermission()) {
+            Logger.d("[TapBack→OCR] skip: accessibility not ready manual=$manual")
             if (manual) ocrView.showError(
                 coreService,
                 coreService.getString(R.string.ocr_error_accessibility_not_ready)
@@ -195,6 +200,7 @@ class OcrService : ICoreService() {
         ocrDoing = true
         OcrTools.collapseStatusBar()
         val pkg = OcrTools.getTopApp() ?: run {
+            Logger.d("[TapBack→OCR] skip: getTopApp() null (no foreground package) manual=$manual")
             if (manual) ocrView.showError(
                 coreService,
                 coreService.getString(R.string.ocr_error_no_foreground_app)
@@ -207,14 +213,17 @@ class OcrService : ICoreService() {
             manual -> pkg
             pkg in PrefManager.appWhiteList -> pkg
             else -> {
-                Logger.d("App $pkg not in whitelist, skipped")
+                Logger.d(
+                    "[TapBack→OCR] skip: package not in whitelist pkg=$pkg manual=$manual " +
+                            "(double-tap only runs OCR for whitelisted apps)",
+                )
                 ocrDoing = false
                 return
             }
         }
 
         triggerVibration()
-        Logger.i("OCR triggered for [$packageName], manual=$manual")
+        Logger.i("[TapBack→OCR] proceed: pkg=$packageName manual=$manual")
         executeOcrFlow(packageName, manual)
     }
 

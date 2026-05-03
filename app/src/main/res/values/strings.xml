@@ -887,8 +887,8 @@
     <string name="setting_page_signatures">Remembered Pages</string>
     <string name="setting_page_signatures_summary">Manage pages for automatic OCR trigger (Activity + content fingerprint)</string>
     <string name="page_signatures_empty">No remembered pages. Manually trigger OCR on a bill page, then tap \"Remember\" when prompted.</string>
-    <string name="setting_ocr_flip_trigger">Flip Phone to Trigger Current Page Recognition</string>
-    <string name="setting_ocr_flip_trigger_summary">Flip phone to trigger current page recognition (Non-Xposed mode)</string>
+    <string name="setting_ocr_back_tap_trigger">Double-tap phone back for current screen recognition</string>
+    <string name="setting_ocr_back_tap_trigger_summary">Double-tap device back triggers OCR when not using Xposed; may not work without accelerometer plus gyroscope</string>
     <string name="setting_ocr_accessibility_auto_trigger">Auto-trigger OCR on page switch</string>
     <string name="setting_ocr_accessibility_auto_trigger_summary">When OCR mode uses accessibility authorization, auto-trigger OCR when switching to remembered pages</string>
 

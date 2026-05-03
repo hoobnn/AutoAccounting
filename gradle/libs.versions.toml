@@ -10,7 +10,8 @@ appcompatResources = "1.7.0"
 activity = "1.10.1"
 browser = "1.8.0"
 constraintlayout = "2.2.1"
-paddleocr4android = "v1.2.9"
+# JitPack: https://jitpack.io/#equationl/paddleocr4android（子模块 ncnnandroidppocr）
+paddleocr4android = "v1.3.0"
 swiperefreshlayout = "1.1.0"
 preferenceKtx = "1.2.1"
 recyclerviewSelection = "1.1.0"
@@ -66,6 +67,8 @@ quickjsAndroid = "35726a9d28"
 materialThemeBuilder = "1.5.1"
 autoresconfig = "1.2.2"
 lifecycleService = "2.9.2"
+# Machine learning (Columbus-style back tap detection)
+tensorflowLite = "2.14.0"
 junit = "4.13.2"
 junitVersion = "1.1.5"
 espressoCore = "3.5.1"
@@ -83,7 +86,7 @@ androidx-browser = { group = "androidx.browser", name = "browser", version.ref =
 androidx-activity = { group = "androidx.activity", name = "activity", version.ref = "activity" }
 androidx-constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
 androidx-swiperefreshlayout = { group = "androidx.swiperefreshlayout", name = "swiperefreshlayout", version.ref = "swiperefreshlayout" }
-paddleocr4android = { module = "com.github.equationl.paddleocr4android:paddleocr4android", version.ref = "paddleocr4android" }
+paddleocr4android = { module = "com.github.equationl.paddleocr4android:ncnnandroidppocr", version.ref = "paddleocr4android" }
 preferenceKtx = { module = "androidx.preference:preference-ktx", version.ref = "preferenceKtx" }
 fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "fragmentKtx" }
 
@@ -130,6 +133,7 @@ junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompatVersion" }
+tensorflow-lite = { module = "org.tensorflow:tensorflow-lite", version.ref = "tensorflowLite" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

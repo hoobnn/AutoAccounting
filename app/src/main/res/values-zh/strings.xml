@@ -973,8 +973,8 @@
     <string name="setting_page_signatures">已记住的页面</string>
     <string name="setting_page_signatures_summary">管理自动触发 OCR 的页面（Activity + 内容特征）</string>
     <string name="page_signatures_empty">暂无已记住的页面。在账单页手动触发识别，成功后点击「记住」即可。</string>
-    <string name="setting_ocr_flip_trigger">翻转手机触发当前页面识别</string>
-    <string name="setting_ocr_flip_trigger_summary">需要配置应用白名单避免误触</string>
+    <string name="setting_ocr_back_tap_trigger">双击机身背部触发当前页面识别</string>
+    <string name="setting_ocr_back_tap_trigger_summary">非 Xposed 模式下可用；依赖加速度计与陀螺仪（Columbus Tap 模型）。请在白名单中配置应用以减少误触</string>
     <string name="setting_ocr_accessibility_auto_trigger">页面切换自动触发OCR</string>
     <string name="setting_ocr_accessibility_auto_trigger_summary">OCR模式使用无障碍授权时，切换到已记住页面时自动触发识别</string>
 

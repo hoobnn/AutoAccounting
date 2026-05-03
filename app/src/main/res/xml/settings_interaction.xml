@@ -45,9 +45,9 @@
         <rikka.material.preference.MaterialSwitchPreference
             android:defaultValue="true"
             android:icon="@drawable/ic_ocr"
-            android:key="ocrFlipTrigger"
-            android:summary="@string/setting_ocr_flip_trigger_summary"
-            android:title="@string/setting_ocr_flip_trigger" />
+            android:key="ocrBackTapTrigger"
+            android:summary="@string/setting_ocr_back_tap_trigger_summary"
+            android:title="@string/setting_ocr_back_tap_trigger" />
 
         <rikka.material.preference.MaterialSwitchPreference
             android:defaultValue="true"
