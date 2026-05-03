@@ -1,5 +1,6 @@
 package net.ankio.tap.columbus.sensors
 
+import net.ankio.tap.TapLogger
 import net.ankio.tap.columbus.BaseTapRT
 import java.util.ArrayDeque
 
@@ -28,7 +29,13 @@ open class TapRT(
         const val mMinTimeGapNs = 100000000L
         const val mMaxTimeGapNs = 500000000L
         private const val mFrameAlignPeak = 12
+        private const val SUB = "TapBack"
     }
+
+    /** 仅用于诊断日志：在 [reset] 时清零，避免刷屏。 */
+    private var diagLoggedImuSync = false
+    private var diagLoggedWaitGyro = false
+    private var diagLoggedWaitAcc = false
 
     private val _lowpassKey = Lowpass1C()
     private val _highpassKey = Highpass1C()
@@ -92,12 +99,26 @@ open class TapRT(
                 continue
             }
 
+            TapLogger.i(
+                SUB,
+                "double-tap confirmed: two Back peaks within " +
+                    "${mMinTimeGapNs / 1_000_000}ms..${mMaxTimeGapNs / 1_000_000}ms window",
+            )
             _tBackTapTimestamps.clear()
             return 2
         }
 
         return 1
     }
+
+    /**
+     * 节流打印用：IMU 对齐、峰值、缓冲长度、Back 候选队列。
+     * 勿在高频路径直接每帧调用。
+     */
+    fun debugPipelineSummary(): String =
+        "imuSync=${_syncTime != 0L} gotAcc=$_gotAcc gotGyro=$_gotGyro " +
+            "peak=${_peakDetectorPositive.getIdMajorPeak()} " +
+            "zAcc=${_zsAcc.size} zGyro=${_zsGyro.size} backQ=${_tBackTapTimestamps.size} lastResult=$_result"
 
     fun getHighpassKey(): Highpass1C {
         return _highpassKey
@@ -203,11 +224,26 @@ open class TapRT(
             val featureVector = _fv
             scaleGyroData(featureVector, 10.0f)
             _fv = featureVector
-            _result = Util.getMaxId(_tflite.predict(featureVector, 7).first())
+            val raw = _tflite.predict(featureVector, 7)
+            val row = raw.firstOrNull()
+            if (row.isNullOrEmpty()) {
+                TapLogger.w(SUB, "ML output empty (check model in assets)")
+                _result = TapClass.Others.ordinal
+            } else {
+                _result = Util.getMaxId(row)
+                val cls = TapClass.entries.getOrElse(_result) { TapClass.Others }
+                TapLogger.d(
+                    SUB,
+                    "ML infer peak=$majorPeakId resampleDelta=$resampleT -> class=$cls (ordinal=$_result)",
+                )
+            }
         }
     }
 
     override fun reset(justClearFv: Boolean) {
+        diagLoggedImuSync = false
+        diagLoggedWaitGyro = false
+        diagLoggedWaitAcc = false
         super.reset()
         if (justClearFv) {
             _fv.clear()
@@ -276,6 +312,10 @@ open class TapRT(
                 }
 
                 if (!_gotGyro) {
+                    if (!diagLoggedWaitGyro) {
+                        diagLoggedWaitGyro = true
+                        TapLogger.d(SUB, "accel events flowing, waiting for first gyro sample to sync IMU")
+                    }
                     return
                 }
             }
@@ -287,6 +327,10 @@ open class TapRT(
                 }
 
                 if (!_gotAcc) {
+                    if (!diagLoggedWaitAcc) {
+                        diagLoggedWaitAcc = true
+                        TapLogger.d(SUB, "gyro events flowing, waiting for first accel sample to sync IMU")
+                    }
                     return
                 }
             }
@@ -304,6 +348,10 @@ open class TapRT(
             _highpassGyro.init(Point3f(0.0f, 0.0f, 0.0f))
             _lowpassKey.init(0.0f)
             _highpassKey.init(0.0f)
+            if (!diagLoggedImuSync) {
+                diagLoggedImuSync = true
+                TapLogger.i(SUB, "IMU time sync established at t=$lastT ns (acc+gyro both present)")
+            }
             return
         }
 
@@ -319,6 +367,7 @@ open class TapRT(
 
         recognizeTapML()
         if (_result == TapClass.Back.ordinal) {
+            TapLogger.d(SUB, "Back class from pipeline, enqueue tap t=$lastT backQ(before)=${_tBackTapTimestamps.size}")
             _tBackTapTimestamps.addLast(lastT)
         }
     }

@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
+    <!-- 与 TapBackDetector 使用 SENSOR_DELAY_FASTEST 一致；合并入主应用清单 -->
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
 </manifest>

@@ -1,7 +1,6 @@
 package net.ankio.tap
 
 import android.content.res.AssetManager
-import android.util.Log
 import net.ankio.tap.columbus.sensors.TfClassifier
 import org.tensorflow.lite.Interpreter
 import java.io.FileInputStream
@@ -29,10 +28,10 @@ class TapTfClassifier(
                 Interpreter.Options(),
             )
         }.also {
-            Log.d(TAG, "tflite loaded: $modelAssetPath")
+            TapLogger.d(SUB, "model ok: $modelAssetPath")
         }
     } catch (e: Exception) {
-        Log.e(TAG, "load tflite failed: $modelAssetPath", e)
+        TapLogger.e(SUB, "model failed: $modelAssetPath", e)
         null
     }
 
@@ -47,6 +46,6 @@ class TapTfClassifier(
     }
 
     private companion object {
-        const val TAG = "TapTfClassifier"
+        private const val SUB = "TapBack"
     }
 }

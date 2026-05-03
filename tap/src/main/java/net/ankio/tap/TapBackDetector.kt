@@ -43,10 +43,29 @@ class TapBackDetector(
     /** 与 [listener] 绑定的单次会话运行时。 */
     private var tapRuntime: TapRT? = null
 
+    /** 传感器回调次数，用于节流诊断日志。 */
+    private var sensorEventCount = 0L
+
+    /** 首包事件各打一条，确认两路传感器都在进回调。 */
+    private var loggedFirstAccel = false
+    private var loggedFirstGyro = false
+
     private val listener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent?) {
             val tap = tapRuntime ?: return
             if (event == null) return
+            when (event.sensor.type) {
+                Sensor.TYPE_ACCELEROMETER ->
+                    if (!loggedFirstAccel) {
+                        loggedFirstAccel = true
+                        TapLogger.d(SUB, "first accelerometer batch t=${event.timestamp}")
+                    }
+                Sensor.TYPE_GYROSCOPE ->
+                    if (!loggedFirstGyro) {
+                        loggedFirstGyro = true
+                        TapLogger.d(SUB, "first gyroscope batch t=${event.timestamp}")
+                    }
+            }
             tap.updateData(
                 event.sensor.type,
                 event.values[0],
@@ -56,7 +75,13 @@ class TapBackDetector(
                 SAMPLING_INTERVAL_NS,
                 isHeuristic = false,
             )
-            if (tap.checkDoubleTapTiming(event.timestamp) == 2) {
+            sensorEventCount++
+            if (sensorEventCount % SENSOR_DIAG_EVERY == 0L) {
+                TapLogger.d(SUB, "sensor throttle #${sensorEventCount} ${tap.debugPipelineSummary()}")
+            }
+            val timing = tap.checkDoubleTapTiming(event.timestamp)
+            if (timing == 2) {
+                TapLogger.i(SUB, "checkDoubleTapTiming=2 -> posting onDoubleBackTap to callbackLooper")
                 callbackHandler.post { onDoubleBackTap() }
             }
         }
@@ -71,7 +96,13 @@ class TapBackDetector(
     /** 混合模式：[applyHybridColumbusInit] + `isHeuristic=false` + SENSOR_DELAY_FASTEST。 */
     fun start() {
         if (started) return
-        if (accelerometer == null || gyroscope == null) return
+        if (accelerometer == null || gyroscope == null) {
+            TapLogger.w(SUB, "no accelerometer or gyroscope")
+            return
+        }
+        sensorEventCount = 0L
+        loggedFirstAccel = false
+        loggedFirstGyro = false
 
         val looper = sensorLooper ?: HandlerThread("tap-back-sensor").also { t ->
             t.start()
@@ -84,19 +115,36 @@ class TapBackDetector(
             applyHybridColumbusInit(rt)
         }
 
-        sensorManager.registerListener(
-            listener,
-            accelerometer,
-            SensorManager.SENSOR_DELAY_FASTEST,
-            sensorHandler!!,
-        )
-        sensorManager.registerListener(
-            listener,
-            gyroscope,
-            SensorManager.SENSOR_DELAY_FASTEST,
-            sensorHandler!!,
-        )
+        runCatching {
+            sensorManager.registerListener(
+                listener,
+                accelerometer,
+                SensorManager.SENSOR_DELAY_FASTEST,
+                sensorHandler!!,
+            )
+            sensorManager.registerListener(
+                listener,
+                gyroscope,
+                SensorManager.SENSOR_DELAY_FASTEST,
+                sensorHandler!!,
+            )
+        }.onFailure { ex ->
+            TapLogger.e(SUB, "registerListener failed", ex)
+            tapRuntime = null
+            classifier?.close()
+            classifier = null
+            ownedSensorThread?.quitSafely()
+            ownedSensorThread = null
+            sensorHandler = null
+            return
+        }
+
         started = true
+        TapLogger.i(
+            SUB,
+            "started model=$modelAssetPath sensitivity=$sensitivity sensorThread=${looper.thread?.name} " +
+                "callback=${callbackLooper.thread?.name}",
+        )
     }
 
     fun stop() {
@@ -109,6 +157,7 @@ class TapBackDetector(
         classifier = null
         tapRuntime = null
         started = false
+        TapLogger.i(SUB, "stopped (processed ~$sensorEventCount sensor events this session)")
     }
 
     /**
@@ -124,9 +173,14 @@ class TapBackDetector(
     }
 
     private companion object {
+        private const val SUB = "TapBack"
+
         /** Pixel 4 XL 标定；包内 assets 已含 `columbus/12` 下多机型备选。 */
         const val DEFAULT_MODEL_ASSET = "columbus/12/tap7cls_coral.tflite"
         private const val SIZE_WINDOW_NS = 160_000_000L
         private const val SAMPLING_INTERVAL_NS = 2_500_000L
+
+        /** 每 N 次传感器回调打一条流水线摘要，平衡信息量与 log 体积。 */
+        private const val SENSOR_DIAG_EVERY = 8_000L
     }
 }
