@@ -115,7 +115,7 @@ class SelectToSpeakService : AccessibilityService() {
             "com.nothing.launcher"                      // Nothing Phone
         )
 
-        androidLauncherList.any { p.contains(it) }.let {
+        if (androidLauncherList.any { p.contains(it) }) {
             Logger.d("Filter out known launcher package: $pkg")
             return false
         }
@@ -123,23 +123,6 @@ class SelectToSpeakService : AccessibilityService() {
         return true
     }
 
-    suspend fun getNowTopPackage(): String? = withTimeout(10_000L) {
-        while (instance == null || instance?.rootInActiveWindow == null) {
-            Logger.d("Waiting for accessibility service to be ready...")
-            delay(500)
-        }
-        val rootNode = rootInActiveWindow
-        if (rootNode != null) {
-            val packageName = rootNode.packageName?.toString()
-            if (filterPkg(packageName)) {
-                Logger.i("Top package from active window: $packageName")
-                topPackage = packageName
-                return@withTimeout packageName
-            }
-            rootNode.recycle()
-        }
-        return@withTimeout null
-    }
     suspend fun getTopPackage(): String? = withTimeout(10_000L) {
         if (topPackage.isNullOrEmpty()) {
             Logger.d("Top package is null or empty")
