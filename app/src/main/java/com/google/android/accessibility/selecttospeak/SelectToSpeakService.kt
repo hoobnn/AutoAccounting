@@ -21,6 +21,8 @@ import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.google.android.accessibility.selecttospeak.SelectToSpeakService.Companion.instance
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import net.ankio.auto.service.AnalysisUtils
 import net.ankio.auto.service.CoreService
 import net.ankio.auto.service.ocr.PageSignatureManager
@@ -70,6 +72,59 @@ class SelectToSpeakService : AccessibilityService() {
         processContentChange()
     }
 
+    private fun filterPkg(pkg: String?): Boolean {
+        if (pkg.isNullOrEmpty()) {
+            Logger.d("Package name is null or empty, skip")
+            return false
+        }
+
+        val p = pkg.lowercase()
+
+        // 1. 过滤标准 Android 系统组件
+        if (p == "android" || p.startsWith("com.android.")) {
+            Logger.d("Filter out Android system package: $pkg")
+            return false
+        }
+
+        // 2. 过滤常见的厂商系统/设置组件
+        if (p.contains("systemui") || p.contains("settings")) {
+            Logger.d("Filter out system/settings package: $pkg")
+            return false
+        }
+
+        // 3. 过滤桌面 (Launcher)
+        // 大多数桌面包名包含 "launcher"、"trebuchet" 或 "home"
+        if (p.endsWith(".launcher")) {
+            Logger.d("Filter out launcher package: $pkg")
+            return false
+        }
+
+        return true
+    }
+
+    suspend fun getTopPackage(): String? = withTimeout(10_000L) {
+        if (topPackage.isNullOrEmpty()) {
+            Logger.d("Top package is null or empty")
+
+            while (instance == null || instance?.rootInActiveWindow == null) {
+                Logger.d("Waiting for accessibility service to be ready...")
+                delay(500)
+            }
+            val rootNode = rootInActiveWindow
+            if (rootNode != null) {
+                val packageName = rootNode.packageName?.toString()
+                if (filterPkg(packageName)) {
+                    Logger.i("Top package from active window: $packageName")
+                    topPackage = packageName
+                    return@withTimeout packageName
+                }
+                rootNode.recycle()
+            }
+            return@withTimeout null
+        }
+        return@withTimeout topPackage
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
@@ -91,7 +146,7 @@ class SelectToSpeakService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
         val pkg = event.packageName?.toString() ?: return
-        if (pkg.isBlank()) return
+        if (!filterPkg(pkg)) return
 
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {

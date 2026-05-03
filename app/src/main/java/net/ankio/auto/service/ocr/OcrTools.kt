@@ -33,50 +33,13 @@ object OcrTools {
 
     /**
      * 当前前台应用包名（供 OCR 规则引擎 app 参数）。
-     *
-     * 优先 [AccessibilityService.rootInActiveWindow]（触发瞬间的真实焦点窗口），
-     * 否则回退 [SelectToSpeakService.topPackage]（由 WINDOW_STATE_CHANGED 维护，连接初期可能仍为空）。
-     *
-     * 诊断日志前缀：`[OcrTopApp]`，logcat 可 `adb logcat | grep OcrTopApp`。
      */
-    fun getTopApp(): String? {
+    suspend fun getTopApp(): String? {
         if (SelectToSpeakService.instance == null) {
             Logger.w("[OcrTopApp] SelectToSpeakService.instance is null (accessibility not connected)")
         }
-        val fromWindow = readForegroundPackageFromActiveWindow()
-        if (fromWindow != null) {
-            Logger.i("[OcrTopApp] resolved from rootInActiveWindow: $fromWindow")
-            return fromWindow
-        }
-        val cached = SelectToSpeakService.topPackage
-        if (cached.isNullOrBlank()) {
-            Logger.w("[OcrTopApp] no package from active window; topPackage cache is empty (no WINDOW_STATE_CHANGED yet?)")
-            return null
-        }
-        Logger.i("[OcrTopApp] resolved from topPackage cache: $cached")
-        return cached
-    }
 
-    /** 从当前活动窗口根节点读取包名；包名为空则返回 null。 */
-    private fun readForegroundPackageFromActiveWindow(): String? {
-        if (SelectToSpeakService.instance == null) {
-            return null
-        }
-        val root = SelectToSpeakService.instance?.rootInActiveWindow ?: run {
-            Logger.w("[OcrTopApp] rootInActiveWindow is null")
-            return null
-        }
-        return try {
-            val pkg = root.packageName?.toString()
-            if (pkg.isNullOrBlank()) {
-                Logger.w("[OcrTopApp] active window packageName is blank")
-                null
-            } else {
-                pkg
-            }
-        } finally {
-            root.recycle()
-        }
+        return SelectToSpeakService.instance?.getTopPackage()
     }
 
     /** 截取当前屏幕 */
