@@ -91,8 +91,8 @@ object BookManagerImpl : HookerClazz() {
             bookManagerInstance,
             "getAllBooks",
             AppRuntime.application!!,
-            false,
-            0 // 1 是个人账本，-1 可能是全部账本（共享）
+            false,// true 是个人账本
+            -1 // -1 是全部账本 0 是隐藏账本，1 是可见账本
         ) as List<*>
     }
 
