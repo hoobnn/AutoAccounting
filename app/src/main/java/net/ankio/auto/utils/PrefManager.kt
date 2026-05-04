@@ -891,4 +891,12 @@ object PrefManager {
     var homePrivacyMode: Boolean
         get() = getBoolean("home_privacy_mode", false)
         set(value) = putBoolean("home_privacy_mode", value)
+
+    /**
+     * 是否已通过应用内入口打开过帮助文档（与「关于 → 官网」同一地址）。
+     * 为 true 时首页不再弹出阅读文档提醒。
+     */
+    var helpDocumentationOpened: Boolean
+        get() = getBoolean("help_documentation_opened", false)
+        set(value) = putBoolean("help_documentation_opened", value)
 }
