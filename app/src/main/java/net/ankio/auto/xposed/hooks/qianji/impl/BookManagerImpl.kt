@@ -91,8 +91,8 @@ object BookManagerImpl : HookerClazz() {
             bookManagerInstance,
             "getAllBooks",
             AppRuntime.application!!,
-            true,
-            -1 // 1 是个人账本，-1 可能是全部账本（共享）
+            false,
+            0 // 1 是个人账本，-1 可能是全部账本（共享）
         ) as List<*>
     }
 
@@ -126,6 +126,7 @@ object BookManagerImpl : HookerClazz() {
             list.forEach {
                 if (it == null) return@forEach
                 val book = QjBookModel.fromObject(it)
+                if (!book.isVisible()) return@forEach
                 bookList.add(BookNameModel().apply {
                     name = book.getName()
                     icon = book.getCover() ?: ""
