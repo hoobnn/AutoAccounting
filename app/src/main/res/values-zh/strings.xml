@@ -1003,6 +1003,12 @@
     <string name="canary_warning_confirm">我了解</string>
     <string name="canary_warning_enable_debug">启用调试模式</string>
 
+    <!-- 帮助文档提醒（与「关于 → 官网」同一链接） -->
+    <string name="help_doc_reminder_title">阅读使用文档</string>
+    <string name="help_doc_reminder_message">建议先阅读官方用户手册，了解工作模式与记账配置后再使用本应用。</string>
+    <string name="help_doc_reminder_positive">查看文档</string>
+    <string name="help_doc_reminder_negative">稍后</string>
+
     <!-- JS编辑器相关 -->
     <string name="js_code_empty">JS代码为空</string>
     <string name="js_executing">执行中...</string>

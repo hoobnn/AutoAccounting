@@ -18,6 +18,7 @@ package net.ankio.auto.ui.fragment
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
+import androidx.core.net.toUri
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
 import com.google.gson.Gson
@@ -38,6 +39,7 @@ import net.ankio.auto.ui.fragment.components.BookCardComponent
 import net.ankio.auto.ui.fragment.components.MonthlyCardComponent
 import net.ankio.auto.ui.fragment.components.StatusCardComponent
 import net.ankio.auto.ui.vm.HomeActivityVm
+import net.ankio.auto.utils.CustomTabsHelper
 import net.ankio.auto.utils.PrefManager
 import org.ezbook.server.intent.BillInfoIntent
 
@@ -90,6 +92,43 @@ class HomeFragment : BaseFragment<FragmentPluginHomeBinding>() {
         checkAndShowCanaryWarning()
         checkServer()
         //  checkNoEditBills()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        maybeShowHelpDocumentationReminder()
+    }
+
+    /**
+     * 若用户从未从应用内打开过帮助文档（官网），每次进入首页（onResume）提示。
+     */
+    private fun maybeShowHelpDocumentationReminder() {
+        if (PrefManager.helpDocumentationOpened) return
+        val hostView = view ?: return
+        hostView.post {
+            if (!isAdded) return@post
+            showHelpDocumentationDialog()
+        }
+    }
+
+    /**
+     * 展示阅读官方文档的底部弹窗；「查看文档」使用与关于页「官网」相同的链接。
+     */
+    private fun showHelpDocumentationDialog() {
+        BaseSheetDialog.create<BottomSheetDialogBuilder>(requireContext())
+            .setTitle(getString(R.string.help_doc_reminder_title))
+            .setMessage(getString(R.string.help_doc_reminder_message))
+            .setPositiveButton(getString(R.string.help_doc_reminder_positive)) { _, _ ->
+                PrefManager.helpDocumentationOpened = true
+                CustomTabsHelper.launchUrl(
+                    requireActivity(),
+                    getString(R.string.setting_official_website_url).toUri()
+                )
+            }
+            .setNegativeButton(getString(R.string.help_doc_reminder_negative)) { _, _ ->
+                // 未标记已读：用户下次回到首页仍会提醒，直到从本弹窗或关于页打开官网
+            }
+            .show()
     }
 
     /**

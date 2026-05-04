@@ -15,7 +15,6 @@
 
 package net.ankio.auto.ui.fragment.settings
 
-import android.net.Uri
 import androidx.core.net.toUri
 import androidx.preference.Preference
 import androidx.preference.PreferenceDataStore
@@ -23,6 +22,7 @@ import net.ankio.auto.R
 import net.ankio.auto.ui.api.BasePreferenceFragment
 import net.ankio.auto.ui.utils.ToastUtils
 import net.ankio.auto.utils.CustomTabsHelper
+import net.ankio.auto.utils.PrefManager
 import net.ankio.auto.utils.SystemUtils
 
 /**
@@ -49,6 +49,8 @@ class AboutPreferenceFragment : BasePreferenceFragment() {
         }
 
         setPreferenceClickListener("officialWebsite") {
+            // 与首页「帮助文档」为同一入口，标记后不再弹首页提醒
+            PrefManager.helpDocumentationOpened = true
             CustomTabsHelper.launchUrlOrCopy(getString(R.string.setting_official_website_url))
         }
 

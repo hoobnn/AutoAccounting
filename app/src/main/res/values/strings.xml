@@ -812,6 +812,12 @@
     <string name="canary_warning_confirm">I understand</string>
     <string name="canary_warning_enable_debug">Enable Debug Mode</string>
 
+    <!-- Help documentation reminder (same URL as About → Official Website) -->
+    <string name="help_doc_reminder_title">Read the documentation</string>
+    <string name="help_doc_reminder_message">We recommend reading the official guide first to learn about work modes and bookkeeping setup.</string>
+    <string name="help_doc_reminder_positive">Open docs</string>
+    <string name="help_doc_reminder_negative">Later</string>
+
     <!-- 设置项标题和摘要 -->
     <string name="setting_auto_group">Automatic deduplication</string>
     <string name="setting_auto_group_summary">Automatically detect and merge duplicate bills</string>
