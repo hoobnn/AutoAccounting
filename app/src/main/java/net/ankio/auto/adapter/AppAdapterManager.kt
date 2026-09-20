@@ -64,12 +64,17 @@ object AppAdapterManager {
         return adapterList().firstOrNull { it.pkg == PrefManager.bookApp } ?: AutoAdapter()
     }
 
+    /**
+     * 仅更新同步状态，不回写账单字段。
+     *
+     * sync 路径可能对副本做过功能开关裁剪（清空 fee/账户、Transfer 降级），
+     * 若用 put 整单覆盖会污染本地数据。
+     */
     fun markSynced(billInfoModel: BillInfoModel) {
         billInfoModel.state = BillState.Synced
         App.launch {
-            BillAPI.put(billInfoModel)
+            BillAPI.status(billInfoModel.id, true)
         }
-
     }
 
     fun isCreditAccount(accountName: String): Boolean = runBlocking {

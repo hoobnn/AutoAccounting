@@ -194,8 +194,30 @@ object BillTool {
         }
     }
 
+    /**
+     * 按功能开关裁剪发往记账软件的账单副本。
+     *
+     * 本地库中的原始字段保持不变；只影响同步出去的内容：
+     * - 关闭手续费/优惠：不传 fee
+     * - 关闭资产管理：不传账户，且 Transfer 降级为 Expend
+     */
+    fun prepareBillForSync(bill: BillInfoModel): BillInfoModel {
+        val syncBill = bill.copy()
+        if (!PrefManager.featureFee) {
+            syncBill.fee = 0.0
+        }
+        if (!PrefManager.featureAssetManage) {
+            if (syncBill.type == BillType.Transfer) {
+                syncBill.type = BillType.Expend
+            }
+            syncBill.accountNameFrom = ""
+            syncBill.accountNameTo = ""
+        }
+        return syncBill
+    }
+
     suspend fun syncBill(billInfoModel: BillInfoModel) {
-        AppAdapterManager.adapter().syncBill(billInfoModel)
+        AppAdapterManager.adapter().syncBill(prepareBillForSync(billInfoModel))
         delay(AppAdapterManager.adapter().sleep())
     }
 
