@@ -32,7 +32,6 @@ package net.ankio.auto.xposed.hooks.qianji.debt/*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.ankio.auto.xposed.core.logger.XposedLogger
-import net.ankio.auto.xposed.core.utils.AppRuntime
 import net.ankio.auto.xposed.hooks.qianji.impl.AssetPreviewPresenterImpl
 import net.ankio.auto.xposed.hooks.qianji.impl.BookManagerImpl
 import net.ankio.auto.xposed.hooks.qianji.models.QjAssetAccountModel
@@ -47,18 +46,20 @@ import org.ezbook.server.db.model.BillInfoModel
 
 class ExpendRepaymentUtils :
     BaseDebt() {
+    /**
+     * 同步还款到钱迹：扣款账户 -> 债主。
+     */
     override suspend fun sync(billModel: BillInfoModel) = withContext(Dispatchers.IO) {
-        // 谁付钱
+        // 扣款账户（如微信）
         val accountFrom = getAccountFrom(billModel)
-        // 资产
+        // 债主（借入债务账户）
         val accountTo = getAccountTo(billModel)
 
         val book = BookManagerImpl.getBookByName(billModel.bookName)
 
         XposedLogger.d("repayment ${billModel.money} ${billModel.accountNameFrom} -> ${billModel.accountNameTo}")
 
-        //拆分账单
-
+        // 本金不足时拆出利息账单
         val (bill1, bill2) = splitBill(billModel, accountFrom)
 
         if (bill2 != null) {
@@ -66,18 +67,15 @@ class ExpendRepaymentUtils :
             saveBill(bill)
         }
 
-        // 更新债主的还款进度；扣款资产不是债务账户
+        // 更新债主还款进度
         updateLoan(bill1!!, accountTo)
-        // 更新资产
+        // 从扣款账户扣钱并持久化
         updateAsset(accountFrom, accountTo, bill1)
 
         if (bill1.money > 0) {
-            // 构建账单
             val bill = updateBill(bill1, 9, book, accountFrom, accountTo)
             saveBill(bill)
         }
-
-
 
         pushBill()
     }
@@ -103,9 +101,8 @@ class ExpendRepaymentUtils :
 
 
     /**
-     * 获取借入账户
+     * 获取债主账户（借入债务）。
      */
-
     private suspend fun getAccountTo(billModel: BillInfoModel): QjAssetAccountModel =
         withContext(Dispatchers.IO) {
             return@withContext AssetPreviewPresenterImpl.getAssetByName(billModel.accountNameTo)
@@ -114,13 +111,12 @@ class ExpendRepaymentUtils :
 
 
     /**
-     * 获取借款账户
+     * 获取扣款账户（如微信）。
      */
-
     private suspend fun getAccountFrom(billModel: BillInfoModel): QjAssetAccountModel =
         withContext(Dispatchers.IO) {
             return@withContext AssetPreviewPresenterImpl.getAssetByName(billModel.accountNameFrom)
-                ?: throw RuntimeException("收款账户不存在 key=accountname;value=${billModel.accountNameFrom}")
+                ?: throw RuntimeException("扣款账户不存在 key=accountname;value=${billModel.accountNameFrom}")
         }
 
 
@@ -144,26 +140,29 @@ class ExpendRepaymentUtils :
         }
 
     /**
-     * 保存账单
+     * 更新资产余额：从扣款账户扣钱，并持久化债主与扣款账户。
+     * 债主余额已在 [updateLoan] 中按借入债务符号更新，此处不得再加回。
      */
-
     private suspend fun updateAsset(
         accountFrom: QjAssetAccountModel,
         accountTo: QjAssetAccountModel,
         billModel: BillInfoModel,
     ) = withContext(Dispatchers.IO) {
-
-        accountTo.addMoney(billModel.money)
-
+        // 还款：钱从扣款账户流出
+        accountFrom.addMoney(-billModel.money)
         updateAssets(accountTo)
         updateAssets(accountFrom)
     }
 
 
     /**
-     * 更新账单
+     * 构建钱迹债务还款账单。
+     *
+     * 钱迹抓包约定：
+     * - type=9 本金：assetId=债主，fromId=扣款账户
+     * - type=10 利息：assetId=扣款账户，fromId=债主
+     * descinfo 固定为「扣款账户->债主」，与模块展示方向一致。
      */
-
     private suspend fun updateBill(
         billModel: BillInfoModel,
         type: Int,
@@ -172,14 +171,10 @@ class ExpendRepaymentUtils :
         accountTo: QjAssetAccountModel
     ): QjBillModel = withContext(Dispatchers.IO) {
         val money = billModel.money
-
         val remark = billModel.remark
-
         val time = billModel.time / 1000
-
         val imageList = ArrayList<String>()
 
-        //    bill2 = Bill.newInstance(i12, trim, d12, timeInMillis, imageUrls);
         val bill = QjBillModel.newInstance(
             type,
             remark,
@@ -188,24 +183,20 @@ class ExpendRepaymentUtils :
             imageList
         )
 
-        //  Arguments com.mutangtech.qianji.data.db.dbhelper.k.saveOrUpdateBill(_id=null;billid=1726485242560127574;userid=200104405e109647c18e9;bookid=-1;timeInSec=1726485230;type=10;remark=债务利息;money=10.0;status=2egoryId=0;platform=0;assetId=1716722720363;fromId=1726474557467;targetId=-1;extra=null)
-
-        //(agent) [195824] Arguments com.mutangtech.qianji.data.db.dbhelper.k.saveOrUpdateBill(_id=null;billid=1726485242551107424;userid=200104405e109647c18e9;bookid=-1;timeInSec=1726485230;type=9;remark=;money=974.0;status=2;categoryId=0;platform=0;assetId=1726474557467;fromId=1716722720363;targetId=-1;extra=null)
-
-
+        // type=10 利息：assetId=扣款账户，fromId=债主
+        // type=9 本金：assetId=债主，fromId=扣款账户
         if (billModel.remark.contains("利息")) {
-            QjBillModel.setZhaiwuCurrentAsset(bill, accountTo)
-            QjBillModel.setZhaiwuAboutAsset(bill, accountFrom)
-        } else {
             QjBillModel.setZhaiwuCurrentAsset(bill, accountFrom)
             QjBillModel.setZhaiwuAboutAsset(bill, accountTo)
+        } else {
+            QjBillModel.setZhaiwuCurrentAsset(bill, accountTo)
+            QjBillModel.setZhaiwuAboutAsset(bill, accountFrom)
         }
 
-
         bill.setBook(book)
-        bill.setDescinfo("${accountTo.getName()}->${accountFrom.getName()}")
+        // 还款方向：扣款账户 -> 债主（与 ExpendLending / 模块 UI 一致）
+        bill.setDescinfo("${accountFrom.getName()}->${accountTo.getName()}")
 
         bill
-
     }
 }
