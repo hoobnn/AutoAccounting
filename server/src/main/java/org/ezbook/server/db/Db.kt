@@ -30,6 +30,7 @@
 package org.ezbook.server.db
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room.databaseBuilder
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -158,7 +159,22 @@ object Db {
                 originalDbFile.copyTo(dbNewFile, overwrite = true)
             }
         }
-        
+
+        // 备份副本无需保留日志：清空 LogModel 并 VACUUM 回收空间，
+        // 避免日志（可再生数据）导致备份文件随时间无限膨胀。只操作副本，不影响线上库。
+        runCatchingExceptCancel {
+            SQLiteDatabase.openDatabase(
+                dbNewFile.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READWRITE
+            ).use { copy ->
+                copy.execSQL("DELETE FROM LogModel")
+                copy.execSQL("VACUUM")
+            }
+        }.onFailure { e ->
+            ServerLog.e("清理备份副本日志失败：${e.message}", e)
+        }
+
         return dbNewFile
     }
 

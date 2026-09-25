@@ -209,67 +209,49 @@ class BackupFileManager(private val context: Context) {
     }
 
     /**
-     * 备份应用 dataDir（包含 shared_prefs、files、databases 等）
+     * 备份用户配置（shared_prefs）
+     *
+     * 只备份用户不可再生的配置数据。cache、app_webview、日志等运行时数据由 App 自动重建，
+     * 一并打包只会让备份文件无限膨胀，故不再全量快照 dataDir。
      */
     private fun backupDataDirectory(backupDir: File) {
         try {
-            val sourceDataDir = File(context.applicationInfo.dataDir)
-            val snapshotDir = File(backupDir, "data_dir")
-            val backupWorkDir = backupDir.canonicalFile
-
-            if (!sourceDataDir.exists()) {
-                Logger.w("应用 dataDir 不存在，跳过备份")
+            val prefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
+            if (!prefsDir.exists()) {
+                Logger.w("shared_prefs 不存在，跳过配置备份")
                 return
             }
 
-            copyDirectoryWithExcludes(
-                sourceDir = sourceDataDir,
-                targetDir = snapshotDir,
-                excludedRoots = setOf(backupWorkDir),
-            )
-            Logger.d("dataDir 备份完成: ${snapshotDir.absolutePath}")
+            // 保留 data_dir/shared_prefs 结构，兼容旧备份的恢复路径
+            val targetPrefsDir = File(backupDir, "data_dir/shared_prefs")
+            prefsDir.copyRecursively(targetPrefsDir, overwrite = true)
+            Logger.d("配置备份完成: ${targetPrefsDir.absolutePath}")
         } catch (e: Exception) {
-            Logger.w("dataDir 备份失败: ${e.message}")
+            Logger.w("配置备份失败: ${e.message}")
         }
     }
 
     /**
-     * 恢复应用 dataDir
+     * 恢复用户配置（shared_prefs）
+     *
+     * 只覆盖 shared_prefs，不再清空并重建整个 dataDir——那样会删除 App 当前的运行时目录，
+     * 既危险又无必要。旧备份的 data_dir 里也含 shared_prefs，同样能正确恢复。
      */
     private fun restoreDataDirectory(backupDir: File) {
         try {
-            val snapshotDir = File(backupDir, "data_dir")
-            if (!snapshotDir.exists()) {
-                Logger.w("备份中没有 data_dir，尝试兼容恢复旧版配置文件")
+            val snapshotPrefsDir = File(backupDir, "data_dir/shared_prefs")
+            if (!snapshotPrefsDir.exists()) {
+                Logger.w("备份中没有 shared_prefs，尝试兼容恢复旧版配置文件")
                 restoreLegacyPreferences(backupDir)
                 return
             }
 
-            val targetDataDir = File(context.applicationInfo.dataDir)
-            val protectedRoot = backupDir.canonicalFile
-
-            if (!targetDataDir.exists()) {
-                targetDataDir.mkdirs()
-            }
-
-            // 清理现有 dataDir（保留当前恢复流程正在使用的临时备份目录）
-            targetDataDir.listFiles()?.forEach { child ->
-                val childPath = child.canonicalFile
-                val shouldKeep = childPath == protectedRoot ||
-                        childPath.path.startsWith(protectedRoot.path + File.separator)
-                if (!shouldKeep) {
-                    child.deleteRecursively()
-                }
-            }
-
-            copyDirectoryWithExcludes(
-                sourceDir = snapshotDir,
-                targetDir = targetDataDir,
-                excludedRoots = emptySet(),
-            )
-            Logger.d("dataDir 恢复完成")
+            val targetPrefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
+            targetPrefsDir.mkdirs()
+            snapshotPrefsDir.copyRecursively(targetPrefsDir, overwrite = true)
+            Logger.d("配置恢复完成")
         } catch (e: Exception) {
-            Logger.w("dataDir 恢复失败: ${e.message}")
+            Logger.w("配置恢复失败: ${e.message}")
         }
     }
 
@@ -299,35 +281,5 @@ class BackupFileManager(private val context: Context) {
         } catch (e: Exception) {
             Logger.w("配置文件恢复失败: ${e.message}")
         }
-    }
-
-    /**
-     * 递归复制目录，并排除指定根目录（用于避免把备份工作目录复制进快照）
-     */
-    private fun copyDirectoryWithExcludes(
-        sourceDir: File,
-        targetDir: File,
-        excludedRoots: Set<File>,
-    ) {
-        val excludedPaths = excludedRoots.map { it.canonicalPath }
-
-        sourceDir.walkTopDown()
-            .onEnter { dir ->
-                val dirPath = dir.canonicalPath
-                excludedPaths.none { excluded ->
-                    dirPath == excluded || dirPath.startsWith(excluded + File.separator)
-                }
-            }
-            .forEach { source ->
-                val relativePath = source.relativeTo(sourceDir).path
-                val target =
-                    if (relativePath.isEmpty()) targetDir else File(targetDir, relativePath)
-                if (source.isDirectory) {
-                    target.mkdirs()
-                } else {
-                    target.parentFile?.mkdirs()
-                    source.copyTo(target, overwrite = true)
-                }
-            }
     }
 }

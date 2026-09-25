@@ -43,9 +43,6 @@ fun Route.logRoutes() {
          * @return ResultModel 包含日志列表数据
          */
         get("/list") {
-            // 清理过期数据
-            Db.get().logDao().clearOld()
-
             val page = call.request.queryParameters["page"]?.toInt() ?: 1
             val limit = call.request.queryParameters["limit"]?.toInt() ?: 10
             val offset = (page - 1) * limit
@@ -79,6 +76,8 @@ fun Route.logRoutes() {
         post("/add") {
             val log = call.receive<LogModel>()
             val id = Db.get().logDao().insert(log)
+            // 写入后清理，保证日志表不超过上限（不再依赖用户打开日志页触发）
+            Db.get().logDao().clearOld()
             call.respond(ResultModel.ok(id))
         }
 
@@ -92,6 +91,8 @@ fun Route.logRoutes() {
             // 使用 List 类型，Ktor 序列化对其支持更稳定
             val logs = call.receive<Array<LogModel>>()
             val ids = Db.get().logDao().insert(logs.toList())
+            // 写入后清理，保证日志表不超过上限（不再依赖用户打开日志页触发）
+            Db.get().logDao().clearOld()
             call.respond(ResultModel.ok(ids))
         }
 
