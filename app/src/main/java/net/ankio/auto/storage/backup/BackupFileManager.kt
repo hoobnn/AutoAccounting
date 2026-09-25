@@ -16,6 +16,7 @@
 package net.ankio.auto.storage.backup
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabase
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
@@ -203,9 +204,39 @@ class BackupFileManager(private val context: Context) {
      */
     private suspend fun restoreDatabase(backupDir: File) {
         val dbFile = File(backupDir, "auto.db")
+        // 上传前在 App 侧瘦身：日志是可再生数据，无需跨进程传输。
+        // 旧备份的 auto.db 可能高达数百 MB（几乎全是日志），直接经 HTTP 上传会撑爆 server 端内存导致 OOM。
+        shrinkDatabaseForImport(dbFile)
         val requestUtils = RequestsUtils()
         val result = requestUtils.put("http://127.0.0.1:52045/db/import", dbFile)
         Logger.d("数据库导入结果: $result")
+    }
+
+    /**
+     * 导入前瘦身：清空日志表并 VACUUM 回收空间
+     *
+     * - DELETE FROM LogModel 不带条件会走 SQLite 的 truncate 优化，瞬间完成且几乎不占内存
+     * - 保留空表以通过 Room 的 schema 校验（不能 DROP）
+     * - VACUUM 所需临时空间约等于有效数据大小（瘦身后仅几 MB）
+     * - 全程为 native 层磁盘操作，不经过 Java 堆
+     *
+     * 失败不阻断导入，退回按原始大小传输（极老备份可能没有 LogModel 表，通常也不大）。
+     */
+    private fun shrinkDatabaseForImport(dbFile: File) {
+        if (!dbFile.exists()) return
+        runCatching {
+            SQLiteDatabase.openDatabase(
+                dbFile.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READWRITE
+            ).use { db ->
+                db.execSQL("DELETE FROM LogModel")
+                db.execSQL("VACUUM")
+            }
+            Logger.d("导入前数据库瘦身完成: ${dbFile.length()} bytes")
+        }.onFailure {
+            Logger.w("导入前数据库瘦身失败，将按原始大小传输: ${it.message}")
+        }
     }
 
     /**
